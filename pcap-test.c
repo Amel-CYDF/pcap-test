@@ -41,7 +41,7 @@ int my_pcap_next(pcap_t *pcap, struct pcap_pkthdr **header, const u_char **packe
 
 int isTCP(const u_char *packet, struct libnet_ethernet_hdr **ethernet, struct libnet_ipv4_hdr **ipv4, struct libnet_tcp_hdr ** tcp) {
 	*ethernet = (struct libnet_ethernet_hdr *)packet;
-	if(ntohs((*ethernet) -> ether_type) != 0x8000)
+	if(ntohs((*ethernet) -> ether_type) != 0x0800)
 		return 0;
 	
 	*ipv4 = (struct libnet_ipv4_hdr *) (*ethernet + 1);
@@ -53,19 +53,21 @@ int isTCP(const u_char *packet, struct libnet_ethernet_hdr **ethernet, struct li
 	return 1;
 }
 
-void printbyoctet(char *msg, void *begin, int size) {
-	if(size < 0)
-		return;
-
+void printbyoctet(char *msg, void *begin, uint8_t size) {
 	printf("%s", msg);
 
-	for(int i = 0; size--; i ^= 1) {
-		printf("%x", *(u_int8_t *) begin++);
+	for(uint8_t i = 0; size--; i ^= 1) {
+		printf("%02X ", *(u_int8_t *) begin++);
 		if(i)
 			printf(" ");
 	}
 
 	printf("\n");
+}
+
+void payload(struct libnet_tcp_hdr *tcp, struct libnet_ipv4_hdr *ipv4) {
+	uint16_t size = ntohs(ipv4 -> ip_len) - (ipv4 -> ip_hl) - (tcp -> th_off) * 32;
+	printbyoctet("Payload          : ", (uint8_t *) tcp + tcp -> th_off * 4, size < 8 ? size : 8);
 }
 
 void getpacket(pcap_t *pcap) {
@@ -78,17 +80,19 @@ void getpacket(pcap_t *pcap) {
 	while(1) {
 		if(my_pcap_next(pcap, &header, &packet)
 			&& isTCP(packet, &ethernet, &ipv4, &tcp)) {
-		
-			printbyoctet("Ethernet src MAC: ", ethernet -> ether_shost, 6);
-			printbyoctet("Ethernet dst MAC: ", ethernet -> ether_dhost, 6);
 
-			printf("IPv4 src IP: %s\n", inet_ntoa(ipv4 -> ip_src));
-			printf("IPv4 dst IP: %s\n", inet_ntoa(ipv4 -> ip_dst));
+			printbyoctet("Ethernet src  MAC: ", ethernet -> ether_shost, 6);
+			printbyoctet("Ethernet dst  MAC: ", ethernet -> ether_dhost, 6);
 
-			printbyoctet("TCP src port: ", &ntohs(tcp -> th_sport), 2);
-			printbyoctet("TCP src port: ", &ntohs(tcp -> th_dport), 2);
+			printf("IPv4     src   IP: %s\n", inet_ntoa(ipv4 -> ip_src));
+			printf("IPv4     dst   IP: %s\n", inet_ntoa(ipv4 -> ip_dst));
 
-			//printbyoctet("Payload:\n", , 8);
+			uint16_t tmp = ntohs(tcp -> th_sport);
+			printbyoctet("TCP      src port: ", &tmp, 2);
+			tmp = ntohs(tcp -> th_dport);
+			printbyoctet("TCP      src port: ", &tmp, 2);
+
+			payload(tcp, ipv4);
 			printf("===\n");
 		}
 	}
